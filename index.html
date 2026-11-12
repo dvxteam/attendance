@@ -114,11 +114,30 @@ function showRegister() {
   app.innerHTML = `<h2>ลงทะเบียนครั้งแรก</h2>
     <p class="muted">ผูกบัญชี LINE นี้กับรหัสนักเรียน (ทำครั้งเดียว และเปลี่ยนเองไม่ได้)</p>
     <label>รหัสนักเรียน</label>
-    <input id="sid" inputmode="numeric" autocomplete="off" placeholder="เช่น 12345">
+    <input id="sid" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="69xxxxxxxxxxx">
     ${roster ? '' : `<label>ชื่อ-นามสกุล</label><input id="name" placeholder="ด.ช. ตัวอย่าง ใจดี">
     <label>ห้อง</label><input id="room" placeholder="เช่น ม.2/1">`}
+    <div id="match" style="display:none;margin:10px 0;padding:12px;border-radius:10px;background:#eef7ee;font-size:15px"></div>
     <p id="regErr" style="color:var(--red);font-size:14px"></p>
-    <button id="reg">ลงทะเบียน</button>`;
+    <button id="reg"${roster ? ' disabled' : ''}>${roster ? 'กรอกรหัสนักศึกษาให้ครบ' : 'ลงทะเบียน'}</button>`;
+  const sidEl = document.getElementById('sid'), matchEl = document.getElementById('match');
+  const errEl = document.getElementById('regErr'), regBtn = document.getElementById('reg');
+  let lookupSeq = 0;
+  if (roster) sidEl.addEventListener('input', async () => {
+    const v = sidEl.value.trim(), seq = ++lookupSeq;
+    matchEl.style.display = 'none'; errEl.textContent = '';
+    regBtn.disabled = true; regBtn.textContent = 'กรอกรหัสนักศึกษาให้ครบ';
+    if (v.length < 13) return;
+    regBtn.textContent = 'กำลังค้นหาชื่อ...';
+    const r = await api('lookup', { idToken: state.idToken, studentId: v });
+    if (seq !== lookupSeq) return;
+    if (!r.ok) { regBtn.textContent = 'กรอกรหัสนักศึกษาให้ครบ'; return errEl.textContent = msg(r); }
+    matchEl.innerHTML = `ชื่อตามรายชื่อ:<br><b style="font-size:17px">${esc(r.student.name)}</b>` +
+      (r.student.classroom ? `<br><span class="muted">รายวิชา ${esc(r.student.classroom)}</span>` : '') +
+      `<br><span class="muted">ถ้าไม่ใช่ชื่อคุณ อย่ากดยืนยัน</span>`;
+    matchEl.style.display = 'block';
+    regBtn.disabled = false; regBtn.textContent = 'ใช่ ยืนยันว่าเป็นฉัน';
+  });
   document.getElementById('reg').onclick = async () => {
     const btn = document.getElementById('reg');
     const studentId = document.getElementById('sid').value.trim();
@@ -130,7 +149,7 @@ function showRegister() {
       classroom: roster ? '' : document.getElementById('room').value.trim(),
     });
     if (!r.ok) {
-      btn.disabled = false; btn.textContent = 'ลงทะเบียน';
+      btn.disabled = false; btn.textContent = roster ? 'ใช่ ยืนยันว่าเป็นฉัน' : 'ลงทะเบียน';
       return document.getElementById('regErr').textContent = msg(r);
     }
     state.status.registered = true;
