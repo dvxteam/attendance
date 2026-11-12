@@ -19,6 +19,10 @@
   button.danger { background:var(--red); }
   .err { color:var(--red); font-size:14px; min-height:20px; margin-top:10px; }
   .muted { color:var(--muted); }
+  .classes { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .classes .pick { display:inline-flex; align-items:center; gap:6px; margin:0; padding:8px 12px; background:#f4f6f8; border-radius:10px; font-size:15px; color:var(--ink); cursor:pointer; }
+  .classes .pick input { width:auto; }
+  .pick i { font-style:normal; color:var(--muted); font-size:12px; }
   .gps { margin-top:24px; padding-top:18px; border-top:1px solid #eef0f2; }
   button.small { padding:6px 12px; font-size:14px; }
   .badge { display:inline-block; font-size:14px; padding:3px 10px; border-radius:999px; background:#e7f8ee; color:#067a36; margin-left:8px; vertical-align:middle; }
@@ -55,8 +59,9 @@
   <input id="pin" type="password" autocomplete="current-password">
   <label>วิชา</label>
   <input id="subject" placeholder="เช่น คณิตศาสตร์ ค22101">
-  <label>ห้อง (ต้องตรงกับคอลัมน์ classroom ในชีต · เว้นว่าง = ทุกคน)</label>
-  <input id="classroom" placeholder="เช่น ม.2/1">
+  <label>รายวิชาที่เช็คชื่อ (เลือกได้หลายวิชา · ไม่เลือก = ทุกคน)</label>
+  <div id="classes" class="classes"><span class="muted" style="font-size:14px">ใส่ PIN แล้วรายวิชาจะขึ้นให้เลือก</span></div>
+  <input id="classroom" placeholder="หรือพิมพ์เอง เช่น GE214,GE208">
   <div class="two">
     <div><label>นับว่าสายหลัง (นาที)</label><input id="late" type="number" value="15" min="0"></div>
     <div><label>เปิดเช็คชื่อนาน (นาที)</label><input id="dur" type="number" value="60" min="5"></div>
@@ -125,6 +130,19 @@ async function api(action, data) {
     return await r.json();
   } catch (e) { return { ok: false, error: 'network' }; }
 }
+
+async function loadClasses() {
+  const p = $('pin').value.trim();
+  if (!p) return;
+  const r = await api('classes', { pin: p });
+  if (!r.ok) { $('classes').innerHTML = '<span class="muted" style="font-size:14px">' + esc(ERR[r.error] || r.error) + '</span>'; return; }
+  const sel = $('classroom').value.split(',').map(s => s.trim()).filter(Boolean);
+  $('classes').innerHTML = r.classes.map(c => '<label class="pick"><input type="checkbox" value="' + esc(c.name) + '"' + (sel.includes(c.name) ? ' checked' : '') + '> ' + esc(c.name) + ' <i>' + c.count + ' คน</i></label>').join('');
+  $('classes').querySelectorAll('input').forEach(cb => cb.onchange = () => {
+    $('classroom').value = [...$('classes').querySelectorAll('input:checked')].map(x => x.value).join(',');
+  });
+}
+$('pin').addEventListener('change', loadClasses);
 
 const enc = new TextEncoder();
 async function hmacHex(msg) {
