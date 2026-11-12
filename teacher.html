@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ครู · เปิดเช็คชื่อ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root { --green:#06c755; --red:#e5484d; --amber:#f5a524; --ink:#1f2328; --muted:#6b7280; --bg:#f4f6f8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Sarabun","Noto Sans Thai",-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+  .setup { max-width:420px; margin:48px auto; background:#fff; padding:28px; border-radius:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .setup h1 { margin:0 0 8px; font-size:24px; }
+  label { display:block; font-size:14px; color:var(--muted); margin:14px 0 6px; }
+  input { width:100%; font:inherit; font-size:16px; padding:11px 13px; border:1.5px solid #d6dae0; border-radius:10px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  button { font:inherit; font-weight:700; font-size:16px; padding:12px 18px; border:0; border-radius:10px; cursor:pointer; background:var(--green); color:#fff; }
+  button.ghost { background:#e9edf1; color:var(--ink); }
+  button.danger { background:var(--red); }
+  .err { color:var(--red); font-size:14px; min-height:20px; margin-top:10px; }
+  .muted { color:var(--muted); }
+  .gps { margin-top:24px; padding-top:18px; border-top:1px solid #eef0f2; }
+  button.small { padding:6px 12px; font-size:14px; }
+  .badge { display:inline-block; font-size:14px; padding:3px 10px; border-radius:999px; background:#e7f8ee; color:#067a36; margin-left:8px; vertical-align:middle; }
+  .badge.off { background:#eef1f4; color:var(--muted); }
+
+  .live { display:none; height:100vh; grid-template-columns: minmax(0,1.25fr) minmax(320px,1fr); }
+  .left { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; background:#fff; }
+  .subject { font-size:clamp(22px,3vw,40px); font-weight:700; text-align:center; }
+  .hint { color:var(--muted); font-size:clamp(14px,1.6vw,20px); margin:6px 0 18px; text-align:center; }
+  #qr { padding:16px; background:#fff; border-radius:12px; }
+  #qr img, #qr canvas { width:min(62vh,46vw) !important; height:auto !important; image-rendering:pixelated; }
+  .bar { width:min(62vh,46vw); height:8px; background:#eef0f2; border-radius:4px; margin-top:14px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--green); width:100%; transition:width .25s linear; }
+  .clock { margin-top:10px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .right { padding:24px; overflow:auto; display:flex; flex-direction:column; }
+  .count { font-size:clamp(40px,6vw,84px); font-weight:800; line-height:1; }
+  .count small { font-size:.4em; color:var(--muted); font-weight:600; }
+  .legend { color:var(--muted); margin:6px 0 16px; }
+  .list { display:flex; flex-wrap:wrap; gap:8px; align-content:flex-start; flex:1; }
+  .chip { background:#fff; border-radius:999px; padding:6px 12px; font-size:15px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .chip.late { background:#fff6e5; }
+  .chip i { font-style:normal; color:var(--muted); font-size:12px; margin-left:6px; }
+  .actions { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  .closed { font-size:28px; font-weight:700; color:var(--red); text-align:center; }
+  @media (max-width:820px) { .live { grid-template-columns:1fr; height:auto; } #qr img, #qr canvas, .bar { width:80vw !important; } }
+</style>
+</head>
+<body>
+
+<div class="setup" id="setup">
+  <h1>เปิดเช็คชื่อ</h1>
+  <p style="color:var(--muted);margin:0">หน้านี้ฉายขึ้นจอหน้าห้อง</p>
+  <label>รหัสครู (PIN)</label>
+  <input id="pin" type="password" autocomplete="current-password">
+  <label>วิชา</label>
+  <input id="subject" placeholder="เช่น คณิตศาสตร์ ค22101">
+  <label>ห้อง (ต้องตรงกับคอลัมน์ classroom ในชีต · เว้นว่าง = ทุกคน)</label>
+  <input id="classroom" placeholder="เช่น ม.2/1">
+  <div class="two">
+    <div><label>นับว่าสายหลัง (นาที)</label><input id="late" type="number" value="15" min="0"></div>
+    <div><label>เปิดเช็คชื่อนาน (นาที)</label><input id="dur" type="number" value="60" min="5"></div>
+  </div>
+  <div class="err" id="err"></div>
+  <button id="start" style="width:100%;margin-top:8px">เริ่มเช็คชื่อ</button>
+
+  <div class="gps">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b>📍 ตรวจตำแหน่ง GPS</b>
+      <button class="ghost small" id="gpsCheck">ดูสถานะ</button>
+    </div>
+    <p class="muted" style="margin:6px 0 0">ทำครั้งเดียว: ถือมือถือยืนกลางห้องเรียน เปิดหน้านี้ ใส่ PIN แล้วกดปุ่มด้านล่าง</p>
+    <label>รัศมีที่ยอมรับ (เมตร)</label>
+    <input id="radius" type="number" value="100" min="30" max="2000">
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button id="gpsSet" style="flex:1">ใช้ตำแหน่งตรงนี้เป็นห้องเรียน</button>
+      <button class="ghost" id="gpsOff">ปิด GPS</button>
+    </div>
+    <div id="gpsStatus" class="muted" style="margin-top:10px;font-size:14px"></div>
+  </div>
+</div>
+
+<div class="live" id="live">
+  <div class="left">
+    <div class="subject" id="title"></div>
+    <div class="hint">เปิดกล้องมือถือหรือกล้อง LINE แล้วสแกน · QR เปลี่ยนทุก <span id="win"></span> วินาที</div>
+    <div id="qr"></div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="right">
+    <div class="count"><span id="n">0</span> <small>/ <span id="total">0</span> คน</small></div>
+    <div class="legend" id="legend">มา 0 · สาย 0</div>
+    <div class="list" id="list"></div>
+    <div class="actions">
+      <button class="ghost" id="fs">เต็มจอ</button>
+      <button class="danger" id="end">ปิดเช็คชื่อ + บันทึกคนขาด</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const C = window.APP_CONFIG;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ERR = {
+  bad_pin: 'รหัสครูไม่ถูกต้อง',
+  change_default_pin: 'ยังไม่ได้เปลี่ยน TEACHER_PIN ใน Script Properties',
+  not_setup: 'ระบบยังไม่ได้ตั้งค่า (รัน setup และใส่ LINE_CHANNEL_ID)',
+  network: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้',
+  bad_location: 'พิกัดไม่ถูกต้อง',
+};
+let S = null, pin = '', key = null, offset = 0, lastW = null, qr = null, timers = [];
+
+// จำวิชา/ห้องล่าสุด (ไม่จำ PIN)
+try {
+  const saved = JSON.parse(localStorage.getItem('att_last') || '{}');
+  ['subject', 'classroom', 'late', 'dur'].forEach(k => { if (saved[k] != null) $(k).value = saved[k]; });
+} catch (e) {}
+
+async function api(action, data) {
+  try {
+    const r = await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ action, ...data }) });
+    return await r.json();
+  } catch (e) { return { ok: false, error: 'network' }; }
+}
+
+const enc = new TextEncoder();
+async function hmacHex(msg) {
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+$('start').onclick = async () => {
+  pin = $('pin').value.trim();
+  const body = { pin, subject: $('subject').value.trim(), classroom: $('classroom').value.trim(),
+                 lateAfterMin: $('late').value, durationMin: $('dur').value };
+  try { localStorage.setItem('att_last', JSON.stringify({ subject: body.subject, classroom: body.classroom, late: body.lateAfterMin, dur: body.durationMin })); } catch (e) {}
+  $('start').disabled = true; $('err').textContent = '';
+  const r = await api('startSession', body);
+  $('start').disabled = false;
+  if (!r.ok) return $('err').textContent = ERR[r.error] || r.error;
+
+  S = r;
+  offset = r.serverTime - Date.now();       // ชดเชยนาฬิกาเครื่องครูให้ตรงกับเซิร์ฟเวอร์
+  key = await crypto.subtle.importKey('raw', enc.encode(r.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+
+  $('setup').style.display = 'none';
+  $('live').style.display = 'grid';
+  $('title').innerHTML = esc([r.subject, r.classroom].filter(Boolean).join(' · ') || 'เช็คชื่อ') +
+    (r.geofence ? '<span class="badge">📍 ตรวจ GPS</span>' : '<span class="badge off">ไม่ตรวจ GPS</span>');
+  $('win').textContent = r.windowSec;
+  qr = new QRCode($('qr'), { text: 'init', width: 512, height: 512, correctLevel: QRCode.CorrectLevel.M });
+
+  timers.push(setInterval(tick, 250));
+  timers.push(setInterval(poll, 8000));
+  tick(); poll();
+  try { await navigator.wakeLock?.request('screen'); } catch (e) {}
+};
+
+async function tick() {
+  const now = Date.now() + offset;
+  if (now > S.endsAt) return finish('หมดเวลาเช็คชื่อแล้ว');
+  const win = S.windowSec;
+  const w = Math.floor(now / 1000 / win);
+  const left = win - ((now / 1000) % win);
+  $('bar').style.width = (left / win * 100) + '%';
+  $('clock').textContent = new Date(now).toLocaleTimeString('th-TH');
+  if (w !== lastW) {
+    lastW = w;
+    const h = (await hmacHex(S.sessionId + ':' + w)).slice(0, 10);
+    qr.makeCode(`https://liff.line.me/${C.LIFF_ID}?s=${S.sessionId}&w=${w}&h=${h}`);
+  }
+}
+
+async function poll() {
+  const r = await api('live', { pin, sessionId: S.sessionId });
+  if (!r.ok) return;
+  const late = r.checked.filter(c => c.status === 'สาย').length;
+  $('n').textContent = r.checked.length;
+  $('total').textContent = r.total;
+  $('legend').textContent = `มา ${r.checked.length - late} · สาย ${late}`;
+  $('list').innerHTML = r.checked.slice().reverse()
+    .map(c => `<span class="chip ${c.status === 'สาย' ? 'late' : ''}">${esc(c.name)}<i>${esc(c.time.slice(0, 5))}</i></span>`).join('');
+}
+
+function stopTimers() { timers.forEach(clearInterval); timers = []; }
+
+function finish(text) {
+  stopTimers();
+  $('qr').innerHTML = `<div class="closed">${esc(text)}</div>`;
+  $('bar').style.width = '0';
+}
+
+$('end').onclick = async () => {
+  if (!confirm('ปิดการเช็คชื่อ และบันทึก "ขาด" ให้คนที่ยังไม่เช็ค?')) return;
+  stopTimers();
+  $('end').disabled = true;
+  const r = await api('endSession', { pin, sessionId: S.sessionId });
+  await poll();
+  if (!r.ok) { $('end').disabled = false; return alert(ERR[r.error] || r.error); }
+  finish('ปิดเช็คชื่อแล้ว');
+  $('legend').innerHTML = `มา ${r.present} · สาย ${r.late} · <b style="color:var(--red)">ขาด ${r.absent}</b>` +
+    (r.absentNames.length ? `<br><span style="font-size:14px">ขาด: ${r.absentNames.map(esc).join(', ')}</span>` : '');
+};
+
+/* ---------- ตั้งค่า GPS ---------- */
+function gpsText(r) {
+  if (!r.enabled) return 'สถานะ: <b>ปิด</b> (นักเรียนเช็คชื่อได้โดยไม่ตรวจตำแหน่ง)';
+  const map = `https://www.google.com/maps?q=${encodeURIComponent(r.lat + ',' + r.lng)}`;
+  return `สถานะ: <b style="color:var(--green)">เปิด</b> · รัศมี ${esc(r.radius)} ม. · ` +
+         `<a href="${map}" target="_blank" rel="noopener">ดูจุดบนแผนที่</a>`;
+}
+async function gpsCall(data) {
+  const p = $('pin').value.trim();
+  if (!p) { $('gpsStatus').textContent = 'กรุณาใส่ PIN ด้านบนก่อน'; return; }
+  const r = await api('geofence', { pin: p, ...data });
+  $('gpsStatus').innerHTML = r.ok ? gpsText(r) : esc(ERR[r.error] || r.error);
+  if (r.ok && r.radius) $('radius').value = r.radius;
+}
+$('gpsCheck').onclick = () => gpsCall({ mode: 'get' });
+$('gpsOff').onclick = () => gpsCall({ mode: 'off' });
+$('gpsSet').onclick = () => {
+  if (!navigator.geolocation) return $('gpsStatus').textContent = 'อุปกรณ์นี้ไม่รองรับ GPS';
+  $('gpsStatus').textContent = 'กำลังหาตำแหน่ง... (รอสักครู่ให้ GPS นิ่ง)';
+  // อ่านตำแหน่งหลายครั้ง แล้วเลือกค่าที่แม่นที่สุด
+  let best = null, n = 0;
+  const id = navigator.geolocation.watchPosition(pos => {
+    n++;
+    if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+    $('gpsStatus').textContent = `กำลังหาตำแหน่ง... ความแม่นยำ ±${Math.round(best.coords.accuracy)} ม.`;
+    if (best.coords.accuracy <= 15 || n >= 8) done();
+  }, err => {
+    navigator.geolocation.clearWatch(id);
+    $('gpsStatus').textContent = 'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง: ' + err.message;
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  const timer = setTimeout(done, 15000);
+  let finished = false;
+  function done() {
+    if (finished) return; finished = true;
+    clearTimeout(timer); navigator.geolocation.clearWatch(id);
+    if (!best) return $('gpsStatus').textContent = 'หาตำแหน่งไม่ได้ ลองออกไปใกล้หน้าต่างแล้วลองใหม่';
+    const acc = Math.round(best.coords.accuracy);
+    if (acc > 100 && !confirm(`ตำแหน่งคลาดเคลื่อนได้ถึง ±${acc} ม. (คอมพิวเตอร์มักไม่มี GPS) ควรใช้มือถือ — ยืนยันใช้ค่านี้ไหม?`)) {
+      return $('gpsStatus').textContent = 'ยกเลิกแล้ว';
+    }
+    gpsCall({ mode: 'set', lat: best.coords.latitude.toFixed(6), lng: best.coords.longitude.toFixed(6), radius: $('radius').value });
+  }
+};
+
+$('fs').onclick =() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+</script>
+</body>
+</html>
